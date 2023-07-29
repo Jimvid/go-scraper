@@ -1,0 +1,7 @@
+.DS_Store
+
+# Keep the 'myfolder' directory itself
+!output/
+# Ignore all files inside 'output'
+output/*
+
