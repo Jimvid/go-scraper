@@ -1,5 +1,5 @@
 TODOS:
-- [ ] Implement pagination
+- [x] Implement pagination
 - [ ] Add headless browser
 - [ ] Add more data sources
 - [ ] ... 

@@ -5,29 +5,45 @@ import (
 	"scraper/utils"
 )
 
-// Product represents a struct for Pokemon products.
 type Product struct {
 	url, image, name, price string
 }
 
-// Scraper represents a struct for data helping colly to scrape information
 type Scraper struct {
-	url           string
-	pagesToScrape int8
-	products      []Product
+	url              string
+	pagesToScrape    []string
+	pagesDiscovered  []string
+	pageLimit        int8
+	products         []Product
+	currentIteration int8
+	currentPage      string
 }
 
-// Create a new scrape session
 func NewPokemonScraper(url string) *Scraper {
 	s := &Scraper{
-		url:           url,
-		pagesToScrape: 1,
+		url:              url,
+		currentPage:      url,
+		pageLimit:        1,
+		currentIteration: 1,
+		pagesToScrape:    []string{},
+		pagesDiscovered:  []string{},
 	}
 
 	return s
 }
 
 func (s *Scraper) PreformScrape(scraper *colly.Collector) {
+	scraper.OnHTML("a.page-numbers", func(e *colly.HTMLElement) {
+		newPaginationLink := e.Attr("href")
+
+		if !containsStringInSlice(s.pagesToScrape, newPaginationLink) {
+			if !containsStringInSlice(s.pagesDiscovered, newPaginationLink) {
+				s.pagesToScrape = append(s.pagesToScrape, newPaginationLink)
+			}
+			s.pagesDiscovered = append(s.pagesDiscovered, newPaginationLink)
+		}
+	})
+
 	scraper.OnHTML("li.product", func(e *colly.HTMLElement) {
 		pokemonProduct := Product{
 			url:   e.ChildAttr("a", "href"),
@@ -39,6 +55,21 @@ func (s *Scraper) PreformScrape(scraper *colly.Collector) {
 		s.products = append(s.products, pokemonProduct)
 	})
 
+	scraper.OnScraped(func(response *colly.Response) {
+		// until there is still a page to scrape
+		if len(s.pagesToScrape) != 0 && s.currentIteration < s.pageLimit {
+			// getting the current page to scrape and removing it from the list
+			s.currentPage = s.pagesToScrape[0]
+			s.pagesToScrape = s.pagesToScrape[1:]
+
+			// incrementing the iteration counter
+			s.currentIteration++
+
+			// visiting a new page
+			scraper.Visit(s.currentPage)
+		}
+	})
+
 	scraper.Visit(s.url)
 
 	headers := []string{
@@ -48,19 +79,16 @@ func (s *Scraper) PreformScrape(scraper *colly.Collector) {
 		"price",
 	}
 
-	// utils.WriteToCSV(headers, pokemonProducts, "output/products.csv")
 	err := utils.WriteToCSV(headers, convertToCustomData(s.products), "output/pokemonProducts.csv")
 	if err != nil {
 		panic(err)
 	}
 }
 
-// If target site is paginated, set limit to pagination
-func (s *Scraper) SetPagesToScrape(input int8) {
-	s.pagesToScrape = input
+func (s *Scraper) SetPageLimit(input int8) {
+	s.pageLimit = input
 }
 
-// ToCSVRecord converts Product to a slice of strings for CSV writing.
 func (p Product) ToCSVRecord() []string {
 	return []string{
 		p.name,
@@ -70,11 +98,20 @@ func (p Product) ToCSVRecord() []string {
 	}
 }
 
-// ConvertToCustomData converts a slice of PokemonProduct to a slice of CustomData.
 func convertToCustomData(pokemonProducts []Product) []utils.CustomData {
 	customDataSlice := make([]utils.CustomData, len(pokemonProducts))
 	for i, v := range pokemonProducts {
 		customDataSlice[i] = v
 	}
 	return customDataSlice
+}
+
+func containsStringInSlice(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
 }
